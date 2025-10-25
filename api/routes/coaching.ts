@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../database/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import { BytePlusAIService } from '../services/byteplusAI.js';
 import type { 
   CoachingRequest, 
   CoachingResponse, 
@@ -230,39 +231,72 @@ router.get('/session/:sessionId/history', (req, res) => {
 
 // AIコーチング応答生成関数
 async function generateCoachingResponse(userInput: string, user: any, context: any = {}) {
-  // 行動変容ステージを判定
-  const behaviorStage = assessBehaviorChangeStage(userInput, context);
-  
-  // GROWモデルに基づく質問生成
-  const growQuestions = generateGrowQuestions(userInput, behaviorStage);
-  
-  // コーチング応答を生成
-  let aiResponse = '';
-  let nextQuestions: string[] = [];
+  try {
+    // BytePlus AIサービスのインスタンスを取得
+    const aiService = BytePlusAIService.getInstance();
+    
+    // セッション履歴を取得
+    const sessionHistory = context.sessionHistory || [];
+    
+    // ユーザーの目標を取得
+    const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') || [];
+    
+    // 行動変容ステージを判定（AI使用）
+    const behaviorStage = await aiService.assessBehaviorChangeStage(userInput, context);
+    
+    // コーチングコンテキストを構築
+    const coachingContext = {
+      sessionHistory,
+      userProfile: user,
+      behaviorStage,
+      currentGoals: userGoals
+    };
+    
+    // BytePlus AIを使用してコーチング応答を生成
+    const aiResponse = await aiService.generateCoachingResponse(userInput, coachingContext);
+    
+    return {
+      aiResponse: aiResponse.content,
+      nextQuestions: aiResponse.nextQuestions,
+      emotionalTone: aiResponse.emotionalTone,
+      confidence: aiResponse.confidence,
+      behaviorStage
+    };
+  } catch (error) {
+    console.error('AI coaching response generation failed:', error);
+    
+    // フォールバック: ルールベースの応答
+    const behaviorStage = assessBehaviorChangeStage(userInput, context);
+    const growQuestions = generateGrowQuestions(userInput, behaviorStage);
+    
+    let aiResponse = '';
+    let nextQuestions: string[] = [];
 
-  // 簡易的なルールベースの応答生成（実際のAI統合は後で実装）
-  if (userInput.includes('目標') || userInput.includes('ゴール')) {
-    aiResponse = generateGoalFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.goal;
-  } else if (userInput.includes('現状') || userInput.includes('今')) {
-    aiResponse = generateRealityFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.reality;
-  } else if (userInput.includes('方法') || userInput.includes('どうすれば')) {
-    aiResponse = generateOptionsFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.options;
-  } else if (userInput.includes('やります') || userInput.includes('実行')) {
-    aiResponse = generateWillFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.will;
-  } else {
-    // 初回または一般的な応答
-    aiResponse = generateWelcomeResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.goal;
+    if (userInput.includes('目標') || userInput.includes('ゴール')) {
+      aiResponse = generateGoalFocusedResponse(userInput, behaviorStage);
+      nextQuestions = growQuestions.goal;
+    } else if (userInput.includes('現状') || userInput.includes('今')) {
+      aiResponse = generateRealityFocusedResponse(userInput, behaviorStage);
+      nextQuestions = growQuestions.reality;
+    } else if (userInput.includes('方法') || userInput.includes('どうすれば')) {
+      aiResponse = generateOptionsFocusedResponse(userInput, behaviorStage);
+      nextQuestions = growQuestions.options;
+    } else if (userInput.includes('やります') || userInput.includes('実行')) {
+      aiResponse = generateWillFocusedResponse(userInput, behaviorStage);
+      nextQuestions = growQuestions.will;
+    } else {
+      aiResponse = generateWelcomeResponse(userInput, behaviorStage);
+      nextQuestions = growQuestions.goal;
+    }
+
+    return {
+      aiResponse,
+      nextQuestions,
+      emotionalTone: 'supportive',
+      confidence: 0.5,
+      behaviorStage
+    };
   }
-
-  return {
-    aiResponse,
-    nextQuestions
-  };
 }
 
 // 行動変容ステージ判定
