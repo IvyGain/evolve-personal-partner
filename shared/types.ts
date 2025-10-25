@@ -156,7 +156,7 @@ export type BehaviorChangeStage =
 
 export interface BehaviorChangeAssessment {
   stage: BehaviorChangeStage;
-  current_stage: string;
+  current_stage: BehaviorChangeStage;
   stage_description: string;
   next_stage_tips: string[];
   confidence_level: number;

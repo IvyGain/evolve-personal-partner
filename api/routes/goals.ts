@@ -157,8 +157,8 @@ router.get('/:goalId', (req, res) => {
       success: true,
       data: {
         goal: {
-          ...goal,
-          smart_goal: JSON.parse(goal.smart_goal)
+          ...(goal as any),
+          smart_goal: JSON.parse((goal as any).smart_goal)
         },
         actionItems,
         progressRecords
@@ -211,8 +211,8 @@ router.put('/:goalId/update', (req, res) => {
     res.json({
       success: true,
       data: {
-        ...updatedGoal,
-        smart_goal: JSON.parse(updatedGoal.smart_goal)
+        ...(updatedGoal as any),
+        smart_goal: JSON.parse((updatedGoal as any).smart_goal)
       }
     });
   } catch (error) {
@@ -289,7 +289,7 @@ router.post('/actions/:actionId/complete', (req, res) => {
     insertProgress.run(
       progressId,
       userId,
-      action.goal_id,
+      (action as any).goal_id,
       actionId,
       true,
       reflection || '',

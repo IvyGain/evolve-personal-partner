@@ -99,6 +99,7 @@ export default function Coaching() {
       speaker: 'user',
       sender: 'user',
       content: inputMessage,
+      metadata: {},
       created_at: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       message_type: 'text'

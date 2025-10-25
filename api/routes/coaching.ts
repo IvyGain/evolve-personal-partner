@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../database/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import { BytePlusAIService } from '../services/byteplusAI.js';
 import type { 
   CoachingRequest, 
   CoachingResponse, 
@@ -261,33 +262,65 @@ router.get('/session/:sessionId/history', (req, res) => {
 
 // AIコーチング応答生成関数
 async function generateCoachingResponse(userInput: string, user: any, context: any = {}) {
-  console.log('🤖 Generating coaching response with context:', {
-    userInput,
-    sessionHistory: context.sessionHistory?.length || 0,
-    currentStage: context.currentStage
-  });
+  try {
+    console.log('🤖 Generating coaching response for user:', user.id);
+    
+    // BytePlus AIサービスのインスタンスを取得
+    const aiService = BytePlusAIService.getInstance();
+    
+    // セッション履歴を取得
+    const sessionHistory = context.sessionHistory || [];
+    
+    // セッション履歴を分析
+    const conversationAnalysis = analyzeConversationHistory(sessionHistory);
+    console.log('📊 Conversation analysis:', conversationAnalysis);
+    
+    // ユーザーの目標を取得
+    const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') || [];
+    
+    // 行動変容ステージを判定（AI使用）
+    const behaviorStage = await aiService.assessBehaviorChangeStage(userInput, context);
+    
+    // コーチングコンテキストを構築
+    const coachingContext = {
+      sessionHistory,
+      userProfile: user,
+      behaviorStage,
+      currentGoals: userGoals,
+      conversationAnalysis
+    };
+    
+    // BytePlus AIを使用してコーチング応答を生成
+    const aiResponse = await aiService.generateCoachingResponse(userInput, coachingContext);
+    
+    return {
+      aiResponse: aiResponse.content,
+      nextQuestions: aiResponse.nextQuestions,
+      emotionalTone: aiResponse.emotionalTone,
+      confidence: aiResponse.confidence,
+      behaviorStage
+    };
+  } catch (error) {
+    console.error('AI coaching response generation failed, falling back to rule-based system:', error);
+    
+    // フォールバック: ルールベースシステム
+    const sessionHistory = context.sessionHistory || [];
+    const conversationAnalysis = analyzeConversationHistory(sessionHistory);
+    const behaviorStage = assessBehaviorChangeStage(userInput, context, conversationAnalysis);
+    const currentGrowPhase = determineGrowPhase(conversationAnalysis, userInput);
+    
+    console.log('🎯 Current GROW phase:', currentGrowPhase);
+    
+    const response = generateContextualResponse(
+      userInput, 
+      behaviorStage, 
+      currentGrowPhase, 
+      conversationAnalysis,
+      user
+    );
 
-  // セッション履歴を分析
-  const conversationAnalysis = analyzeConversationHistory(context.sessionHistory || []);
-  console.log('📊 Conversation analysis:', conversationAnalysis);
-  
-  // 行動変容ステージを判定（履歴も考慮）
-  const behaviorStage = assessBehaviorChangeStage(userInput, context, conversationAnalysis);
-  
-  // GROWモデルの現在のフェーズを判定
-  const currentGrowPhase = determineGrowPhase(conversationAnalysis, userInput);
-  console.log('🎯 Current GROW phase:', currentGrowPhase);
-  
-  // コンテキストに基づく応答生成
-  const response = generateContextualResponse(
-    userInput, 
-    behaviorStage, 
-    currentGrowPhase, 
-    conversationAnalysis,
-    user
-  );
-
-  return response;
+    return response;
+  }
 }
 
 // セッション履歴分析関数
@@ -507,10 +540,13 @@ function generateContextualResponse(
       aiResponse = generateAdaptiveResponse(userInput, behaviorStage, analysis);
       nextQuestions = generateAdaptiveQuestions(analysis);
   }
-
+  
   return {
     aiResponse,
-    nextQuestions
+    nextQuestions,
+    emotionalTone: 'supportive',
+    confidence: 0.8,
+    behaviorStage
   };
 }
 

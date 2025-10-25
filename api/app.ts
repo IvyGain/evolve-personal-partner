@@ -13,7 +13,9 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { createServer } from 'http'
 import { Server as SocketIOServer } from 'socket.io'
-import { initializeDatabase } from './database/database.js'
+import { initializeDatabase, db } from './database/database.js'
+import { BytePlusAIService } from './services/byteplusAI.js'
+import { v4 as uuidv4 } from 'uuid'
 import authRoutes from './routes/auth.js'
 import coachingRoutes from './routes/coaching.js'
 import goalsRoutes from './routes/goals.js'
@@ -61,9 +63,87 @@ io.on('connection', (socket) => {
   })
 
   // AI応答リクエスト
-  socket.on('ai_coaching_request', (data) => {
-    // AIコーチング応答処理（後で実装）
-    console.log('AI coaching request from:', socket.id)
+  socket.on('ai_coaching_request', async (data) => {
+    try {
+      console.log('AI coaching request from:', socket.id, data);
+      
+      const { sessionId, userInput, userId = 'demo-user-001' } = data;
+      
+      // ユーザー情報を取得
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      if (!user) {
+        socket.emit('ai_coaching_error', { error: 'User not found' });
+        return;
+      }
+      
+      // セッション履歴を取得
+      const sessionHistory = db.prepare(`
+        SELECT * FROM session_messages 
+        WHERE session_id = ? 
+        ORDER BY created_at ASC
+      `).all(sessionId);
+      
+      // ユーザーの目標を取得
+      const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') || [];
+      
+      // BytePlus AIサービスを使用
+      const aiService = BytePlusAIService.getInstance();
+      
+      // 行動変容ステージを判定
+      const behaviorStage = await aiService.assessBehaviorChangeStage(userInput, { sessionHistory });
+      
+      // コーチングコンテキストを構築
+      const coachingContext = {
+        sessionHistory,
+        userProfile: user,
+        behaviorStage,
+        currentGoals: userGoals
+      };
+      
+      // リアルタイムでAI応答を生成
+      socket.emit('ai_coaching_thinking', { 
+        message: 'AIが応答を考えています...',
+        stage: behaviorStage 
+      });
+      
+      // BytePlus AIを使用してコーチング応答を生成
+      const aiResponse = await aiService.generateCoachingResponse(userInput, coachingContext);
+      
+      // ユーザーメッセージを記録
+      if (sessionId) {
+        const messageId = uuidv4();
+        const insertMessage = db.prepare(`
+          INSERT INTO session_messages (id, session_id, speaker, content) 
+          VALUES (?, ?, ?, ?)
+        `);
+        insertMessage.run(messageId, sessionId, 'user', userInput);
+        
+        // AI応答を記録
+        const aiMessageId = uuidv4();
+        const insertAIMessage = db.prepare(`
+          INSERT INTO session_messages (id, session_id, speaker, content) 
+          VALUES (?, ?, ?, ?)
+        `);
+        insertAIMessage.run(aiMessageId, sessionId, 'ai', aiResponse.content);
+      }
+      
+      // リアルタイムでAI応答を送信
+      socket.emit('ai_coaching_response', {
+        sessionId,
+        content: aiResponse.content,
+        nextQuestions: aiResponse.nextQuestions,
+        emotionalTone: aiResponse.emotionalTone,
+        confidence: aiResponse.confidence,
+        behaviorStage,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('AI coaching WebSocket error:', error);
+      socket.emit('ai_coaching_error', { 
+        error: 'AI応答の生成に失敗しました。しばらく後にもう一度お試しください。' 
+      });
+    }
   })
 
   socket.on('disconnect', () => {
