@@ -14,13 +14,21 @@ import {
   Volume2,
   VolumeX
 } from 'lucide-react';
+import { VoiceInput } from '../components/VoiceInput';
 import type { CoachingSession, SessionMessage } from '../../shared/types';
+
+// Web Speech API型定義
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function Coaching() {
   const [currentSession, setCurrentSession] = useState<CoachingSession | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -37,6 +45,7 @@ export default function Coaching() {
   const startNewSession = async () => {
     setSessionLoading(true);
     try {
+      console.log('🚀 Starting new coaching session...');
       const response = await fetch('/api/coaching/session/start', {
         method: 'POST',
         headers: {
@@ -48,17 +57,34 @@ export default function Coaching() {
         }),
       });
 
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', response.headers);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+      console.log('📋 Session start result:', result);
+      
       if (result.success) {
         setCurrentSession(result.data.session);
         setMessages([result.data.initial_message]);
         toast.success('新しいコーチングセッションを開始しました！');
+        console.log('✅ Session started successfully');
       } else {
-        toast.error('セッションの開始に失敗しました');
+        console.error('❌ Session start failed:', result.error);
+        toast.error(`セッションの開始に失敗しました: ${result.error || '不明なエラー'}`);
       }
     } catch (error) {
-      console.error('Failed to start session:', error);
-      toast.error('セッションの開始に失敗しました');
+      console.error('💥 Failed to start session:', error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        toast.error('サーバーに接続できません。ネットワーク接続を確認してください。');
+      } else if (error instanceof Error) {
+        toast.error(`セッションの開始に失敗しました: ${error.message}`);
+      } else {
+        toast.error('セッションの開始に失敗しました: 不明なエラー');
+      }
     } finally {
       setSessionLoading(false);
     }
@@ -70,8 +96,10 @@ export default function Coaching() {
     const userMessage: SessionMessage = {
       id: Date.now().toString(),
       session_id: currentSession.id,
+      speaker: 'user',
       sender: 'user',
       content: inputMessage,
+      created_at: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       message_type: 'text'
     };
@@ -81,6 +109,7 @@ export default function Coaching() {
     setLoading(true);
 
     try {
+      console.log('💬 Sending message to session:', currentSession.id);
       const response = await fetch(`/api/coaching/session/${currentSession.id}/continue`, {
         method: 'POST',
         headers: {
@@ -93,7 +122,15 @@ export default function Coaching() {
         }),
       });
 
+      console.log('📡 Message response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+      console.log('📋 Message result:', result);
+      
       if (result.success) {
         setMessages(prev => [...prev, result.data.ai_response]);
         
@@ -101,12 +138,20 @@ export default function Coaching() {
         if ('speechSynthesis' in window) {
           speakText(result.data.ai_response.content);
         }
+        console.log('✅ Message sent successfully');
       } else {
-        toast.error('メッセージの送信に失敗しました');
+        console.error('❌ Message send failed:', result.error);
+        toast.error(`メッセージの送信に失敗しました: ${result.error || '不明なエラー'}`);
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
-      toast.error('メッセージの送信に失敗しました');
+      console.error('💥 Failed to send message:', error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        toast.error('サーバーに接続できません。ネットワーク接続を確認してください。');
+      } else if (error instanceof Error) {
+        toast.error(`メッセージの送信に失敗しました: ${error.message}`);
+      } else {
+        toast.error('メッセージの送信に失敗しました: 不明なエラー');
+      }
     } finally {
       setLoading(false);
     }
@@ -134,28 +179,17 @@ export default function Coaching() {
     }
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setIsRecording(true);
-      
-      // 簡易的な音声認識のシミュレーション
-      setTimeout(() => {
-        setIsRecording(false);
-        setInputMessage('音声入力のテストメッセージです。実際の実装では音声認識APIを使用します。');
-        stream.getTracks().forEach(track => track.stop());
-        toast.success('音声を認識しました');
-      }, 3000);
-      
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-      toast.error('音声録音に失敗しました');
-      setIsRecording(false);
-    }
+  // 音声入力からのトランスクリプトを処理
+  const handleVoiceTranscript = (transcript: string) => {
+    console.log('🎯 Voice transcript received:', transcript);
+    setInputMessage(prev => prev + transcript);
+    toast.success('音声を認識しました');
   };
 
-  const stopRecording = () => {
-    setIsRecording(false);
+  // 音声入力エラーを処理
+  const handleVoiceError = (error: string) => {
+    console.error('❌ Voice input error:', error);
+    toast.error(error);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -226,14 +260,12 @@ export default function Coaching() {
                 key={method.title}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + index * 0.1 }}
-                className="bg-white rounded-xl p-4 shadow-lg border border-gray-100"
+                transition={{ delay: 0.1 + index * 0.1 }}
+                className={`bg-gradient-to-br ${method.color} p-6 rounded-2xl text-white`}
               >
-                <div className={`flex items-center justify-center w-10 h-10 bg-gradient-to-r ${method.color} rounded-lg mb-3`}>
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <h3 className="font-semibold text-gray-800 mb-1">{method.title}</h3>
-                <p className="text-sm text-gray-600">{method.description}</p>
+                <Icon className="w-8 h-8 mb-3" />
+                <h3 className="font-semibold text-lg mb-2">{method.title}</h3>
+                <p className="text-sm opacity-90">{method.description}</p>
               </motion.div>
             );
           })}
@@ -245,21 +277,19 @@ export default function Coaching() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden"
+        className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
       >
         {currentSession ? (
           <>
             {/* Session Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-4 text-white">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center w-10 h-10 bg-white/20 rounded-xl">
-                    <MessageCircle className="w-5 h-5" />
-                  </div>
+                  <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
                   <div>
-                    <h2 className="font-semibold">コーチングセッション</h2>
+                    <h3 className="font-semibold">コーチングセッション</h3>
                     <p className="text-sm opacity-90">
-                      {new Date(currentSession.created_at).toLocaleString('ja-JP')}
+                      開始時刻: {new Date(currentSession.created_at).toLocaleString('ja-JP')}
                     </p>
                   </div>
                 </div>
@@ -323,7 +353,16 @@ export default function Coaching() {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-gray-100 p-4">
+            <div className="border-t border-gray-100 p-4 space-y-4">
+              {/* Voice Input Component */}
+              <VoiceInput
+                onTranscript={handleVoiceTranscript}
+                onError={handleVoiceError}
+                disabled={loading}
+                className="mb-4"
+              />
+              
+              {/* Text Input */}
               <div className="flex items-end space-x-3">
                 <div className="flex-1">
                   <textarea
@@ -337,34 +376,14 @@ export default function Coaching() {
                   />
                 </div>
                 
-                <div className="flex space-x-2">
-                  <button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className={`p-3 rounded-xl transition-all duration-300 ${
-                      isRecording
-                        ? 'bg-red-500 text-white animate-pulse'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                  </button>
-                  
-                  <button
-                    onClick={sendMessage}
-                    disabled={!inputMessage.trim() || loading}
-                    className="p-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </div>
+                <button
+                  onClick={sendMessage}
+                  disabled={!inputMessage.trim() || loading}
+                  className="p-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
               </div>
-              
-              {isRecording && (
-                <div className="mt-3 flex items-center justify-center space-x-2 text-red-600">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm">録音中...</span>
-                </div>
-              )}
             </div>
           </>
         ) : (

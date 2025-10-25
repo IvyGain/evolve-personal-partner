@@ -14,7 +14,7 @@
     "check": "tsc --noEmit",
     "server:dev": "nodemon",
     "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\"",
-    "vercel-build": "vite build"
+    "vercel-build": "tsc -b && vite build"
   },
   "dependencies": {
     "clsx": "^2.1.1",

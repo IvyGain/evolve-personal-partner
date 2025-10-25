@@ -14,108 +14,124 @@ const router = express.Router();
 // コーチングセッション開始
 router.post('/session/start', async (req, res) => {
   try {
-    const { textInput, sessionContext }: CoachingRequest = req.body;
+    console.log('🚀 Starting new coaching session:', req.body);
+    const { goal_focus, preferred_style } = req.body;
     
     // デモユーザーを取得または作成
     let user = db.prepare('SELECT * FROM users WHERE id = ?').get('demo-user-001');
     
     if (!user) {
-      // デモユーザーを作成
-      const insertUser = db.prepare(`
-        INSERT INTO users (id, name, personality_profile, preferences) 
-        VALUES (?, ?, ?, ?)
-      `);
-      
-      insertUser.run(
-        'demo-user-001',
-        'Demo User',
-        JSON.stringify({
-          openness: 0.8,
-          conscientiousness: 0.7,
-          extraversion: 0.6,
-          agreeableness: 0.9,
-          neuroticism: 0.3
-        }),
-        JSON.stringify({
-          coaching_style: 'supportive',
-          session_length: 30,
-          reminder_frequency: 'daily'
-        })
-      );
-      
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get('demo-user-001');
+      console.log('📝 Creating demo user...');
+      try {
+        // デモユーザーを作成
+        const insertUser = db.prepare(`
+          INSERT INTO users (id, name, personality_profile, preferences) 
+          VALUES (?, ?, ?, ?)
+        `);
+        
+        insertUser.run(
+          'demo-user-001',
+          'Demo User',
+          JSON.stringify({
+            openness: 0.8,
+            conscientiousness: 0.7,
+            extraversion: 0.6,
+            agreeableness: 0.9,
+            neuroticism: 0.3
+          }),
+          JSON.stringify({
+            coaching_style: preferred_style || 'supportive',
+            session_length: 30,
+            reminder_frequency: 'daily'
+          })
+        );
+        
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get('demo-user-001');
+        console.log('✅ Demo user created:', user);
+      } catch (userError) {
+        console.error('❌ Error creating demo user:', userError);
+        throw new Error('Failed to create demo user');
+      }
     }
 
     // 新しいコーチングセッションを作成
     const sessionId = uuidv4();
-    const insertSession = db.prepare(`
-      INSERT INTO coaching_sessions (id, user_id, session_type, context_data, status) 
-      VALUES (?, ?, ?, ?, ?)
-    `);
+    console.log('🎯 Creating session with ID:', sessionId);
     
-    insertSession.run(
-      sessionId,
-      user.id,
-      'ai_coaching',
-      JSON.stringify(sessionContext || {}),
-      'active'
-    );
+    try {
+      const insertSession = db.prepare(`
+        INSERT INTO coaching_sessions (id, user_id, session_type, context_data, status) 
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      
+      insertSession.run(
+        sessionId,
+        (user as any).id,
+        'ai_coaching',
+        JSON.stringify({ goal_focus, preferred_style }),
+        'active'
+      );
+      console.log('✅ Session created successfully');
+    } catch (sessionError) {
+      console.error('❌ Error creating session:', sessionError);
+      throw new Error('Failed to create coaching session');
+    }
 
-    // ユーザーメッセージを記録
-    if (textInput) {
-      const messageId = uuidv4();
-      const insertMessage = db.prepare(`
+    // 初期AIメッセージを生成
+    try {
+      const initialResponse = generateWelcomeResponse('', 'precontemplation');
+      console.log('💬 Generated initial response:', initialResponse);
+      
+      // AI応答を記録
+      const aiMessageId = uuidv4();
+      const insertAIMessage = db.prepare(`
         INSERT INTO session_messages (id, session_id, speaker, content) 
         VALUES (?, ?, ?, ?)
       `);
       
-      insertMessage.run(messageId, sessionId, 'user', textInput);
+      insertAIMessage.run(aiMessageId, sessionId, 'ai', initialResponse.aiResponse);
+      console.log('✅ Initial AI message recorded');
+
+      // セッション情報を取得
+      const session = db.prepare('SELECT * FROM coaching_sessions WHERE id = ?').get(sessionId);
+      console.log('📋 Session retrieved:', session);
+
+      // レスポンスを返す
+      const response = {
+        success: true,
+        data: {
+          session: {
+            id: sessionId,
+            user_id: (user as any).id,
+            session_type: 'ai_coaching',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          initial_message: {
+            id: aiMessageId,
+            session_id: sessionId,
+            speaker: 'ai',
+            content: initialResponse.aiResponse,
+            timestamp: new Date().toISOString(),
+            sender: 'ai',
+            created_at: new Date().toISOString()
+          }
+        }
+      };
+
+      console.log('🎉 Session start successful, sending response:', response);
+      res.json(response);
+    } catch (messageError) {
+      console.error('❌ Error generating/recording initial message:', messageError);
+      throw new Error('Failed to generate initial message');
     }
 
-    // AIコーチング応答を生成
-    const aiResponse = await generateCoachingResponse(textInput || '', user, sessionContext);
-    
-    // AI応答を記録
-    const aiMessageId = uuidv4();
-    const insertAIMessage = db.prepare(`
-      INSERT INTO session_messages (id, session_id, speaker, content) 
-      VALUES (?, ?, ?, ?)
-    `);
-    
-    insertAIMessage.run(aiMessageId, sessionId, 'ai', aiResponse.aiResponse);
-
-    // 感情分析を記録（簡易版）
-    const emotionAnalysis = analyzeEmotion(textInput || '');
-    const insertEmotion = db.prepare(`
-      INSERT INTO emotion_analysis (id, session_id, message_id, emotion_scores, dominant_emotion, confidence_score) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    insertEmotion.run(
-      uuidv4(),
-      sessionId,
-      aiMessageId,
-      JSON.stringify(emotionAnalysis.emotion_scores),
-      emotionAnalysis.dominant_emotion,
-      emotionAnalysis.confidence_score
-    );
-
-    const response: ApiResponse<CoachingResponse> = {
-      success: true,
-      data: {
-        sessionId,
-        aiResponse: aiResponse.aiResponse,
-        emotionAnalysis,
-        nextQuestions: aiResponse.nextQuestions
-      }
-    };
-
-    res.json(response);
   } catch (error) {
-    console.error('Coaching session error:', error);
+    console.error('💥 Session start error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to start coaching session'
+      error: error.message || 'Failed to start coaching session'
     });
   }
 });
@@ -123,12 +139,14 @@ router.post('/session/start', async (req, res) => {
 // セッション継続
 router.post('/session/:sessionId/continue', async (req, res) => {
   try {
+    console.log('🔄 Continuing session:', req.params.sessionId, req.body);
     const { sessionId } = req.params;
-    const { textInput }: CoachingRequest = req.body;
+    const { user_message, emotional_state } = req.body;
 
     // セッション存在確認
     const session = db.prepare('SELECT * FROM coaching_sessions WHERE id = ?').get(sessionId);
     if (!session) {
+      console.log('❌ Session not found:', sessionId);
       return res.status(404).json({
         success: false,
         error: 'Session not found'
@@ -136,7 +154,7 @@ router.post('/session/:sessionId/continue', async (req, res) => {
     }
 
     // ユーザー情報取得
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get((session as any).user_id);
 
     // ユーザーメッセージを記録
     const messageId = uuidv4();
@@ -145,7 +163,8 @@ router.post('/session/:sessionId/continue', async (req, res) => {
       VALUES (?, ?, ?, ?)
     `);
     
-    insertMessage.run(messageId, sessionId, 'user', textInput);
+    insertMessage.run(messageId, sessionId, 'user', user_message);
+    console.log('💬 User message recorded:', user_message);
 
     // セッション履歴を取得
     const sessionHistory = db.prepare(`
@@ -155,7 +174,8 @@ router.post('/session/:sessionId/continue', async (req, res) => {
     `).all(sessionId);
 
     // AIコーチング応答を生成
-    const aiResponse = await generateCoachingResponse(textInput, user, { sessionHistory });
+    const aiResponse = await generateCoachingResponse(user_message, user, { sessionHistory });
+    console.log('🤖 AI response generated:', aiResponse.aiResponse);
     
     // AI応答を記録
     const aiMessageId = uuidv4();
@@ -167,7 +187,7 @@ router.post('/session/:sessionId/continue', async (req, res) => {
     insertAIMessage.run(aiMessageId, sessionId, 'ai', aiResponse.aiResponse);
 
     // 感情分析
-    const emotionAnalysis = analyzeEmotion(textInput);
+    const emotionAnalysis = analyzeEmotion(user_message);
     const insertEmotion = db.prepare(`
       INSERT INTO emotion_analysis (id, session_id, message_id, emotion_scores, dominant_emotion, confidence_score) 
       VALUES (?, ?, ?, ?, ?, ?)
@@ -182,19 +202,30 @@ router.post('/session/:sessionId/continue', async (req, res) => {
       emotionAnalysis.confidence_score
     );
 
-    const response: ApiResponse<CoachingResponse> = {
+    // AI応答メッセージオブジェクトを作成（フロントエンドの期待に合わせる）
+    const ai_response = {
+      id: aiMessageId,
+      session_id: sessionId,
+      sender: 'ai',
+      content: aiResponse.aiResponse,
+      timestamp: new Date().toISOString(),
+      message_type: 'text'
+    };
+
+    console.log('📤 Sending AI response');
+
+    const response = {
       success: true,
       data: {
-        sessionId,
-        aiResponse: aiResponse.aiResponse,
-        emotionAnalysis,
-        nextQuestions: aiResponse.nextQuestions
+        ai_response,
+        emotion_analysis: emotionAnalysis,
+        next_questions: aiResponse.nextQuestions
       }
     };
 
     res.json(response);
   } catch (error) {
-    console.error('Session continue error:', error);
+    console.error('❌ Session continue error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to continue session'
@@ -230,33 +261,251 @@ router.get('/session/:sessionId/history', (req, res) => {
 
 // AIコーチング応答生成関数
 async function generateCoachingResponse(userInput: string, user: any, context: any = {}) {
-  // 行動変容ステージを判定
-  const behaviorStage = assessBehaviorChangeStage(userInput, context);
+  console.log('🤖 Generating coaching response with context:', {
+    userInput,
+    sessionHistory: context.sessionHistory?.length || 0,
+    currentStage: context.currentStage
+  });
+
+  // セッション履歴を分析
+  const conversationAnalysis = analyzeConversationHistory(context.sessionHistory || []);
+  console.log('📊 Conversation analysis:', conversationAnalysis);
   
-  // GROWモデルに基づく質問生成
-  const growQuestions = generateGrowQuestions(userInput, behaviorStage);
+  // 行動変容ステージを判定（履歴も考慮）
+  const behaviorStage = assessBehaviorChangeStage(userInput, context, conversationAnalysis);
   
-  // コーチング応答を生成
+  // GROWモデルの現在のフェーズを判定
+  const currentGrowPhase = determineGrowPhase(conversationAnalysis, userInput);
+  console.log('🎯 Current GROW phase:', currentGrowPhase);
+  
+  // コンテキストに基づく応答生成
+  const response = generateContextualResponse(
+    userInput, 
+    behaviorStage, 
+    currentGrowPhase, 
+    conversationAnalysis,
+    user
+  );
+
+  return response;
+}
+
+// セッション履歴分析関数
+function analyzeConversationHistory(sessionHistory: any[]) {
+  if (!sessionHistory || sessionHistory.length === 0) {
+    return {
+      messageCount: 0,
+      topics: [],
+      userGoals: [],
+      challenges: [],
+      emotions: [],
+      growPhaseHistory: [],
+      lastUserMessage: null,
+      conversationFlow: 'initial'
+    };
+  }
+
+  const userMessages = sessionHistory.filter(msg => msg.sender === 'user');
+  const aiMessages = sessionHistory.filter(msg => msg.sender === 'ai');
+  
+  // トピック抽出
+  const topics = extractTopics(userMessages);
+  
+  // 目標抽出
+  const userGoals = extractGoals(userMessages);
+  
+  // 課題抽出
+  const challenges = extractChallenges(userMessages);
+  
+  // 感情分析履歴
+  const emotions = userMessages.map(msg => analyzeEmotion(msg.content));
+  
+  // GROWフェーズ履歴
+  const growPhaseHistory = trackGrowPhases(sessionHistory);
+  
+  // 最後のユーザーメッセージ
+  const lastUserMessage = userMessages[userMessages.length - 1];
+  
+  // 会話の流れを判定
+  const conversationFlow = determineConversationFlow(sessionHistory);
+
+  return {
+    messageCount: sessionHistory.length,
+    userMessageCount: userMessages.length,
+    topics,
+    userGoals,
+    challenges,
+    emotions,
+    growPhaseHistory,
+    lastUserMessage,
+    conversationFlow,
+    recentContext: sessionHistory.slice(-6) // 直近6メッセージ
+  };
+}
+
+// トピック抽出
+function extractTopics(userMessages: any[]): string[] {
+  const topics = new Set<string>();
+  const topicKeywords = {
+    'キャリア': ['仕事', 'キャリア', '転職', '昇進', '職場'],
+    '健康': ['健康', '運動', 'ダイエット', '食事', '睡眠'],
+    '人間関係': ['人間関係', '友人', '家族', '恋人', 'コミュニケーション'],
+    '学習': ['勉強', '学習', 'スキル', '資格', '成長'],
+    'ライフスタイル': ['生活', '習慣', '時間管理', 'バランス']
+  };
+
+  userMessages.forEach(msg => {
+    Object.entries(topicKeywords).forEach(([topic, keywords]) => {
+      if (keywords.some(keyword => msg.content.includes(keyword))) {
+        topics.add(topic);
+      }
+    });
+  });
+
+  return Array.from(topics);
+}
+
+// 目標抽出
+function extractGoals(userMessages: any[]): string[] {
+  const goals = [];
+  const goalPatterns = [
+    /(.+)したい/g,
+    /(.+)になりたい/g,
+    /目標は(.+)/g,
+    /達成したいのは(.+)/g
+  ];
+
+  userMessages.forEach(msg => {
+    goalPatterns.forEach(pattern => {
+      const matches = msg.content.match(pattern);
+      if (matches) {
+        goals.push(...matches);
+      }
+    });
+  });
+
+  return goals.slice(0, 5); // 最大5個まで
+}
+
+// 課題抽出
+function extractChallenges(userMessages: any[]): string[] {
+  const challenges = [];
+  const challengeKeywords = ['困っている', '悩んでいる', '問題', '課題', 'うまくいかない', '難しい'];
+
+  userMessages.forEach(msg => {
+    challengeKeywords.forEach(keyword => {
+      if (msg.content.includes(keyword)) {
+        challenges.push(msg.content);
+      }
+    });
+  });
+
+  return challenges.slice(0, 3); // 最大3個まで
+}
+
+// GROWフェーズ追跡
+function trackGrowPhases(sessionHistory: any[]): string[] {
+  const phases = [];
+  const phaseKeywords = {
+    'Goal': ['目標', 'ゴール', '達成したい', 'なりたい'],
+    'Reality': ['現状', '今', '現在', '実際'],
+    'Options': ['方法', 'やり方', 'どうすれば', '選択肢'],
+    'Will': ['やります', '実行', '始める', 'コミット']
+  };
+
+  sessionHistory.forEach(msg => {
+    if (msg.sender === 'ai') return;
+    
+    Object.entries(phaseKeywords).forEach(([phase, keywords]) => {
+      if (keywords.some(keyword => msg.content.includes(keyword))) {
+        phases.push(phase);
+      }
+    });
+  });
+
+  return phases;
+}
+
+// 会話の流れ判定
+function determineConversationFlow(sessionHistory: any[]): string {
+  if (sessionHistory.length <= 2) return 'initial';
+  if (sessionHistory.length <= 6) return 'exploration';
+  if (sessionHistory.length <= 12) return 'deepening';
+  return 'action_planning';
+}
+
+// GROWフェーズ判定
+function determineGrowPhase(analysis: any, userInput: string): string {
+  const input = userInput.toLowerCase();
+  
+  // 履歴に基づく判定
+  const recentPhases = analysis.growPhaseHistory.slice(-3);
+  
+  // 現在の入力に基づく判定
+  if (input.includes('目標') || input.includes('ゴール') || input.includes('達成したい')) {
+    return 'Goal';
+  } else if (input.includes('現状') || input.includes('今') || input.includes('実際')) {
+    return 'Reality';
+  } else if (input.includes('方法') || input.includes('どうすれば') || input.includes('やり方')) {
+    return 'Options';
+  } else if (input.includes('やります') || input.includes('実行') || input.includes('始める')) {
+    return 'Will';
+  }
+  
+  // 履歴に基づく次のフェーズ推定
+  if (recentPhases.length > 0) {
+    const lastPhase = recentPhases[recentPhases.length - 1];
+    switch (lastPhase) {
+      case 'Goal': return 'Reality';
+      case 'Reality': return 'Options';
+      case 'Options': return 'Will';
+      case 'Will': return 'Goal';
+    }
+  }
+  
+  // デフォルトは Goal から開始
+  return 'Goal';
+}
+
+// コンテキスト活用応答生成
+function generateContextualResponse(
+  userInput: string, 
+  behaviorStage: BehaviorChangeStage, 
+  growPhase: string, 
+  analysis: any,
+  user: any
+) {
+  console.log('🎨 Generating contextual response:', { growPhase, behaviorStage, messageCount: analysis.messageCount });
+
+  // 初回セッションの場合
+  if (analysis.messageCount === 0) {
+    return generateWelcomeResponse(userInput, behaviorStage);
+  }
+
+  // 継続セッションの場合、前回の内容を参照
   let aiResponse = '';
   let nextQuestions: string[] = [];
 
-  // 簡易的なルールベースの応答生成（実際のAI統合は後で実装）
-  if (userInput.includes('目標') || userInput.includes('ゴール')) {
-    aiResponse = generateGoalFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.goal;
-  } else if (userInput.includes('現状') || userInput.includes('今')) {
-    aiResponse = generateRealityFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.reality;
-  } else if (userInput.includes('方法') || userInput.includes('どうすれば')) {
-    aiResponse = generateOptionsFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.options;
-  } else if (userInput.includes('やります') || userInput.includes('実行')) {
-    aiResponse = generateWillFocusedResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.will;
-  } else {
-    // 初回または一般的な応答
-    aiResponse = generateWelcomeResponse(userInput, behaviorStage);
-    nextQuestions = growQuestions.goal;
+  switch (growPhase) {
+    case 'Goal':
+      aiResponse = generateGoalFocusedResponseWithContext(userInput, behaviorStage, analysis);
+      nextQuestions = generateGoalQuestions(analysis);
+      break;
+    case 'Reality':
+      aiResponse = generateRealityFocusedResponseWithContext(userInput, behaviorStage, analysis);
+      nextQuestions = generateRealityQuestions(analysis);
+      break;
+    case 'Options':
+      aiResponse = generateOptionsFocusedResponseWithContext(userInput, behaviorStage, analysis);
+      nextQuestions = generateOptionsQuestions(analysis);
+      break;
+    case 'Will':
+      aiResponse = generateWillFocusedResponseWithContext(userInput, behaviorStage, analysis);
+      nextQuestions = generateWillQuestions(analysis);
+      break;
+    default:
+      aiResponse = generateAdaptiveResponse(userInput, behaviorStage, analysis);
+      nextQuestions = generateAdaptiveQuestions(analysis);
   }
 
   return {
@@ -265,9 +514,151 @@ async function generateCoachingResponse(userInput: string, user: any, context: a
   };
 }
 
-// 行動変容ステージ判定
-function assessBehaviorChangeStage(userInput: string, context: any): BehaviorChangeStage {
+// コンテキスト活用Goal応答
+function generateGoalFocusedResponseWithContext(userInput: string, stage: BehaviorChangeStage, analysis: any): string {
+  const { userGoals, topics, conversationFlow } = analysis;
+  
+  if (userGoals.length > 0) {
+    return `これまでお話しいただいた「${userGoals[0]}」について、もう少し具体的に教えてください。その目標が達成されたとき、あなたの生活はどのように変わっていると思いますか？`;
+  }
+  
+  if (topics.length > 0) {
+    return `${topics[0]}に関する目標について、より明確にしていきましょう。あなたが本当に実現したいことは何でしょうか？`;
+  }
+  
+  return generateGoalFocusedResponse(userInput, stage);
+}
+
+// コンテキスト活用Reality応答
+function generateRealityFocusedResponseWithContext(userInput: string, stage: BehaviorChangeStage, analysis: any): string {
+  const { challenges, lastUserMessage, conversationFlow } = analysis;
+  
+  if (challenges.length > 0) {
+    return `先ほどお話しいただいた課題について、現在の状況をもう少し詳しく教えてください。どのような点で特に困難を感じていますか？`;
+  }
+  
+  if (lastUserMessage && analysis.messageCount > 2) {
+    return `お話しいただいた内容から、現在の状況をより深く理解したいと思います。これまでにどのような取り組みをされてきましたか？`;
+  }
+  
+  return generateRealityFocusedResponse(userInput, stage);
+}
+
+// コンテキスト活用Options応答
+function generateOptionsFocusedResponseWithContext(userInput: string, stage: BehaviorChangeStage, analysis: any): string {
+  const { userGoals, challenges, topics } = analysis;
+  
+  if (userGoals.length > 0 && challenges.length > 0) {
+    return `「${userGoals[0]}」を実現するために、これまでお話しいただいた課題を踏まえて、どのような方法が考えられるでしょうか？過去の成功体験も参考にしてみてください。`;
+  }
+  
+  return generateOptionsFocusedResponse(userInput, stage);
+}
+
+// コンテキスト活用Will応答
+function generateWillFocusedResponseWithContext(userInput: string, stage: BehaviorChangeStage, analysis: any): string {
+  const { userGoals, recentContext } = analysis;
+  
+  if (userGoals.length > 0) {
+    return `素晴らしいですね！「${userGoals[0]}」に向けて、具体的に何から始めますか？今週中に実行できる小さな一歩を決めましょう。`;
+  }
+  
+  return generateWillFocusedResponse(userInput, stage);
+}
+
+// 適応的応答生成
+function generateAdaptiveResponse(userInput: string, stage: BehaviorChangeStage, analysis: any): string {
+  const { emotions, conversationFlow, messageCount } = analysis;
+  
+  // 感情に基づく応答調整
+  const latestEmotion = emotions[emotions.length - 1];
+  if (latestEmotion && latestEmotion.dominant_emotion === 'sadness') {
+    return `お話しいただき、ありがとうございます。少し辛い気持ちを感じていらっしゃるようですね。まずは今の気持ちを大切にしながら、一緒に前向きな方向を見つけていきましょう。`;
+  }
+  
+  if (latestEmotion && latestEmotion.dominant_emotion === 'joy') {
+    return `とても前向きな気持ちが伝わってきます！この良い流れを活かして、さらに具体的な行動につなげていきましょう。`;
+  }
+  
+  // 会話の流れに基づく応答
+  switch (conversationFlow) {
+    case 'initial':
+      return `お話しいただき、ありがとうございます。あなたの状況をより深く理解するために、いくつか質問させてください。`;
+    case 'exploration':
+      return `これまでのお話から、あなたの考えがより明確になってきましたね。さらに掘り下げて考えてみましょう。`;
+    case 'deepening':
+      return `お話しいただいた内容を整理すると、いくつかの重要なポイントが見えてきました。これらを踏まえて次のステップを考えてみましょう。`;
+    case 'action_planning':
+      return `これまでの対話を通じて、あなたの目標と現状がよく理解できました。具体的な行動計画を立てていきましょう。`;
+  }
+  
+  return `お話しいただき、ありがとうございます。あなたの状況をより深く理解するために、いくつか質問させてください。`;
+}
+
+// コンテキスト活用質問生成
+function generateGoalQuestions(analysis: any): string[] {
+  const { topics, userGoals } = analysis;
+  
+  if (userGoals.length > 0) {
+    return [
+      'その目標が実現したとき、どんな気持ちになりますか？',
+      '目標達成によって、周りの人にはどんな影響がありそうですか？',
+      'なぜその目標が重要だと感じるのですか？'
+    ];
+  }
+  
+  return [
+    'あなたが本当に達成したいことは何ですか？',
+    'その目標が実現したとき、どんな気持ちになりますか？',
+    '具体的にはどのような状態を目指していますか？'
+  ];
+}
+
+function generateRealityQuestions(analysis: any): string[] {
+  return [
+    '現在の状況を詳しく教えてください',
+    'これまでにどんな取り組みをされましたか？',
+    '今、一番の課題は何だと感じていますか？'
+  ];
+}
+
+function generateOptionsQuestions(analysis: any): string[] {
+  return [
+    'どのような方法が考えられますか？',
+    '過去に成功した経験から学べることはありますか？',
+    '他にどんな選択肢がありそうですか？'
+  ];
+}
+
+function generateWillQuestions(analysis: any): string[] {
+  return [
+    '具体的に何から始めますか？',
+    'いつまでに実行しますか？',
+    'どのように進捗を確認しますか？'
+  ];
+}
+
+function generateAdaptiveQuestions(analysis: any): string[] {
+  const { conversationFlow } = analysis;
+  
+  switch (conversationFlow) {
+    case 'initial':
+      return [
+        'どのようなことでお悩みですか？',
+        '今日はどんなことをお話ししたいですか？',
+        'どのような変化を求めていますか？'
+      ];
+    default:
+      return generateGoalQuestions(analysis);
+  }
+}
+
+// 行動変容ステージ判定（履歴考慮版）
+function assessBehaviorChangeStage(userInput: string, context: any, analysis: any): BehaviorChangeStage {
   const input = userInput.toLowerCase();
+  
+  // 履歴からの判定も考慮
+  const { emotions, messageCount } = analysis;
   
   if (input.includes('変わりたくない') || input.includes('必要ない')) {
     return 'precontemplation';
@@ -281,33 +672,15 @@ function assessBehaviorChangeStage(userInput: string, context: any): BehaviorCha
     return 'maintenance';
   }
   
+  // 感情分析に基づく判定
+  if (emotions.length > 0) {
+    const latestEmotion = emotions[emotions.length - 1];
+    if (latestEmotion.dominant_emotion === 'joy' && messageCount > 5) {
+      return 'action';
+    }
+  }
+  
   return 'contemplation'; // デフォルト
-}
-
-// GROWモデル質問生成
-function generateGrowQuestions(userInput: string, stage: BehaviorChangeStage) {
-  return {
-    goal: [
-      'あなたが本当に達成したいことは何ですか？',
-      'その目標が実現したとき、どんな気持ちになりますか？',
-      '具体的にはどのような状態を目指していますか？'
-    ],
-    reality: [
-      '現在の状況を詳しく教えてください',
-      'これまでにどんな取り組みをされましたか？',
-      '今、一番の課題は何だと感じていますか？'
-    ],
-    options: [
-      'どのような方法が考えられますか？',
-      '過去に成功した経験から学べることはありますか？',
-      '他にどんな選択肢がありそうですか？'
-    ],
-    will: [
-      '具体的に何から始めますか？',
-      'いつまでに実行しますか？',
-      'どうやって進捗を確認しますか？'
-    ]
-  };
 }
 
 // 各種応答生成関数
@@ -359,12 +732,18 @@ function generateWillFocusedResponse(userInput: string, stage: BehaviorChangeSta
   return responses[stage];
 }
 
-function generateWelcomeResponse(userInput: string, stage: BehaviorChangeStage): string {
-  return `こんにちは！EVOLVEへようこそ。私はあなたの成長をサポートするAIコーチです。
+function generateWelcomeResponse(userInput: string, stage: BehaviorChangeStage): { aiResponse: string; nextQuestions: string[] } {
+  const welcomeMessage = 'こんにちは！あなたの目標達成をサポートするパーソナルコーチです。今日はどのようなことについてお話ししたいですか？';
+  const initialQuestions = [
+    'どのようなことでお悩みですか？',
+    '今日はどんなことをお話ししたいですか？',
+    'どのような変化を求めていますか？'
+  ];
   
-今日はどのようなことについてお話ししましょうか？あなたの目標や現在の状況、お悩みなど、何でもお聞かせください。
-
-一緒に、あなたらしい成長の道筋を見つけていきましょう。`;
+  return {
+    aiResponse: welcomeMessage,
+    nextQuestions: initialQuestions
+  };
 }
 
 // 簡易感情分析
