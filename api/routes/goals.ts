@@ -109,7 +109,7 @@ router.get('/list', (req, res) => {
       ORDER BY g.priority DESC, g.created_at DESC
     `).all(userId);
 
-    const goalsWithProgress = goals.map(goal => ({
+    const goalsWithProgress = goals.map((goal: any) => ({
       ...goal,
       smart_goal: JSON.parse(goal.smart_goal),
       completion_rate: goal.total_actions > 0 ? (goal.completed_actions / goal.total_actions) * 100 : 0
@@ -157,8 +157,8 @@ router.get('/:goalId', (req, res) => {
       success: true,
       data: {
         goal: {
-          ...goal,
-          smart_goal: JSON.parse(goal.smart_goal)
+          ...(goal as any),
+          smart_goal: JSON.parse((goal as any).smart_goal)
         },
         actionItems,
         progressRecords
@@ -211,8 +211,8 @@ router.put('/:goalId/update', (req, res) => {
     res.json({
       success: true,
       data: {
-        ...updatedGoal,
-        smart_goal: JSON.parse(updatedGoal.smart_goal)
+        ...(updatedGoal as any),
+        smart_goal: JSON.parse((updatedGoal as any).smart_goal)
       }
     });
   } catch (error) {
@@ -289,7 +289,7 @@ router.post('/actions/:actionId/complete', (req, res) => {
     insertProgress.run(
       progressId,
       userId,
-      action.goal_id,
+      (action as any).goal_id,
       actionId,
       true,
       reflection || '',
@@ -372,6 +372,8 @@ function create21DayHabitPlan(goalId: string, smartGoal: SmartGoal): HabitFormat
     id: uuidv4(),
     goal_id: goalId,
     description: `Week1: ${action.description}（意識的実行期）`,
+    raw_goal: smartGoal.specific,
+    priority: 3 as 1 | 2 | 3 | 4 | 5,
     sequence_order: index + 1,
     estimated_minutes: action.minutes,
     difficulty_level: action.difficulty as 'easy' | 'medium' | 'hard',
@@ -383,6 +385,8 @@ function create21DayHabitPlan(goalId: string, smartGoal: SmartGoal): HabitFormat
     id: uuidv4(),
     goal_id: goalId,
     description: `Week2: ${action.description}（抵抗期・継続強化）`,
+    raw_goal: smartGoal.specific,
+    priority: 3 as 1 | 2 | 3 | 4 | 5,
     sequence_order: index + 8,
     estimated_minutes: action.minutes + 5,
     difficulty_level: 'medium',
@@ -394,6 +398,8 @@ function create21DayHabitPlan(goalId: string, smartGoal: SmartGoal): HabitFormat
     id: uuidv4(),
     goal_id: goalId,
     description: `Week3: ${action.description}（習慣化期）`,
+    raw_goal: smartGoal.specific,
+    priority: 3 as 1 | 2 | 3 | 4 | 5,
     sequence_order: index + 15,
     estimated_minutes: action.minutes,
     difficulty_level: action.difficulty as 'easy' | 'medium' | 'hard',

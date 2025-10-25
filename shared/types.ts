@@ -34,16 +34,19 @@ export interface CoachingSession {
   status: 'active' | 'completed' | 'paused';
   started_at: string;
   ended_at?: string;
+  created_at: string;
 }
 
 export interface SessionMessage {
   id: string;
   session_id: string;
   speaker: 'user' | 'ai';
+  sender: 'user' | 'ai';
   content: string;
   audio_url?: string;
   metadata: Record<string, any>;
   created_at: string;
+  timestamp: string;
 }
 
 export interface EmotionAnalysis {
@@ -150,6 +153,9 @@ export type BehaviorChangeStage =
 
 export interface BehaviorChangeAssessment {
   stage: BehaviorChangeStage;
+  current_stage: BehaviorChangeStage;
+  stage_description: string;
+  next_stage_tips: string[];
   confidence_level: number;
   motivation_level: number;
   barriers: string[];
@@ -201,6 +207,8 @@ export interface ProgressSummary {
   active_goals: number;
   completion_rate: number;
   streak_days: number;
+  current_streak: number;
+  total_points: number;
   total_sessions: number;
   average_session_duration: number;
 }
@@ -228,8 +236,11 @@ export interface MicroAchievement {
   user_id: string;
   title: string;
   description: string;
+  action_description: string;
+  raw_goal: string;
   points: number;
   achieved_at: string;
+  recorded_at: string;
   category: 'daily' | 'weekly' | 'milestone' | 'breakthrough';
 }
 

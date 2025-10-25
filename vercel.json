@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm install && npm run vercel-build",
+  "buildCommand": "pnpm install && pnpm run build",
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {

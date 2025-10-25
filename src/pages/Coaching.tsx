@@ -70,10 +70,12 @@ export default function Coaching() {
     const userMessage: SessionMessage = {
       id: Date.now().toString(),
       session_id: currentSession.id,
+      speaker: 'user',
       sender: 'user',
       content: inputMessage,
-      timestamp: new Date().toISOString(),
-      message_type: 'text'
+      metadata: {},
+      created_at: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
 
     setMessages(prev => [...prev, userMessage]);
