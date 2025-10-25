@@ -4,6 +4,7 @@
 export interface User {
   id: string;
   name: string;
+  email: string;
   personality_profile: PersonalityProfile;
   preferences: UserPreferences;
   created_at: string;
@@ -29,24 +30,26 @@ export interface CoachingSession {
   id: string;
   user_id: string;
   session_type: string;
-  context_data: Record<string, any>;
-  duration_minutes: number;
+  context_data?: Record<string, any>;
+  duration_minutes?: number;
   status: 'active' | 'completed' | 'paused';
-  started_at: string;
+  started_at?: string;
   ended_at?: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface SessionMessage {
   id: string;
   session_id: string;
   speaker: 'user' | 'ai';
-  sender: 'user' | 'ai';
+  sender: 'user' | 'ai';  // フロントエンドで使用されているプロパティ
   content: string;
   audio_url?: string;
-  metadata: Record<string, any>;
+  metadata?: Record<string, any>;
   created_at: string;
-  timestamp: string;
+  timestamp: string;  // フロントエンドで使用されているプロパティ
+  message_type: 'text' | 'audio';  // フロントエンドで使用されているプロパティ
 }
 
 export interface EmotionAnalysis {
@@ -208,8 +211,8 @@ export interface ProgressSummary {
   completion_rate: number;
   streak_days: number;
   current_streak: number;
-  total_points: number;
   total_sessions: number;
+  total_points: number;
   average_session_duration: number;
 }
 

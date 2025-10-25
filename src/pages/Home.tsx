@@ -252,6 +252,21 @@ export default function Home() {
           </div>
         </div>
       </motion.section>
+
+      {/* Hidden Architecture Link */}
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, delay: 2.0 }}
+        className="text-center pt-8"
+      >
+        <Link
+          to="/architecture"
+          className="text-xs text-gray-400 hover:text-gray-600 transition-colors duration-300 opacity-50 hover:opacity-100"
+        >
+          ・
+        </Link>
+      </motion.div>
     </div>
   );
 }

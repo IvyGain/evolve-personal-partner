@@ -68,8 +68,8 @@ router.post('/create', async (req, res) => {
     });
 
     // 作成された目標を取得
-    const createdGoal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
-    const actionItems = db.prepare('SELECT * FROM action_items WHERE goal_id = ? ORDER BY sequence_order').all(goalId);
+    const createdGoal: any = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
+    const actionItems: any[] = db.prepare('SELECT * FROM action_items WHERE goal_id = ? ORDER BY sequence_order').all(goalId);
 
     const response: ApiResponse<{goal: Goal, actionPlan: ActionItem[], habitPlan: HabitFormationPlan}> = {
       success: true,
@@ -77,8 +77,8 @@ router.post('/create', async (req, res) => {
         goal: {
           ...createdGoal,
           smart_goal: JSON.parse(createdGoal.smart_goal)
-        },
-        actionPlan: actionItems,
+        } as Goal,
+        actionPlan: actionItems as ActionItem[],
         habitPlan
       }
     };
@@ -133,7 +133,7 @@ router.get('/:goalId', (req, res) => {
   try {
     const { goalId } = req.params;
     
-    const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
+    const goal: any = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
     if (!goal) {
       return res.status(404).json({
         success: false,
@@ -206,7 +206,7 @@ router.put('/:goalId/update', (req, res) => {
       });
     }
 
-    const updatedGoal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
+    const updatedGoal: any = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
 
     res.json({
       success: true,
@@ -278,7 +278,7 @@ router.post('/actions/:actionId/complete', (req, res) => {
     }
 
     // 進捗記録を作成
-    const action = db.prepare('SELECT * FROM action_items WHERE id = ?').get(actionId);
+    const action: any = db.prepare('SELECT * FROM action_items WHERE id = ?').get(actionId);
     const progressId = uuidv4();
     
     const insertProgress = db.prepare(`
@@ -441,8 +441,11 @@ function generateMicroAchievement(action: any, userId: string) {
     user_id: userId,
     title: randomAchievement.title,
     description: randomAchievement.description,
+    action_description: action.description || 'アクション完了',
+    raw_goal: action.raw_goal || '目標達成',
     points: randomAchievement.points,
     achieved_at: new Date().toISOString(),
+    recorded_at: new Date().toISOString(),
     category: 'daily' as const
   };
 }
