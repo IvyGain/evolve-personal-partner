@@ -76,6 +76,9 @@ export interface Goal {
   priority: 1 | 2 | 3 | 4 | 5;
   status: 'active' | 'completed' | 'paused' | 'cancelled';
   target_date?: string;
+  completion_rate: number;
+  completed_actions: number;
+  total_actions: number;
   created_at: string;
   updated_at: string;
 }
@@ -92,6 +95,8 @@ export interface ActionItem {
   id: string;
   goal_id: string;
   description: string;
+  raw_goal: string;
+  priority: 1 | 2 | 3 | 4 | 5;
   sequence_order: number;
   estimated_minutes: number;
   difficulty_level: 'easy' | 'medium' | 'hard';
@@ -180,6 +185,14 @@ export interface DashboardData {
   todayActions: ActionItem[];
   progressSummary: ProgressSummary;
   recentSessions: CoachingSession[];
+  overview: ProgressSummary;
+  today_actions: ActionItem[];
+  active_goals: Goal[];
+  recent_achievements: MicroAchievement[];
+  emotional_trend: EmotionTrend[];
+  behavior_stage: BehaviorChangeAssessment;
+  habit_progress: HabitProgress[];
+  motivational_message: string;
 }
 
 export interface ProgressSummary {
@@ -225,4 +238,24 @@ export interface AppError {
   code: string;
   message: string;
   details?: any;
+}
+
+// 追加の型定義
+export interface EmotionTrend {
+  date: string;
+  dominant_emotion: string;
+  average_score: number;
+  avg_emotional_state: number;
+}
+
+export interface HabitProgress {
+  goal_id: string;
+  habit_name: string;
+  goal_title: string;
+  current_streak: number;
+  target_days: number;
+  completion_rate: number;
+  days_since_start: number;
+  habit_strength: number;
+  phase_description: string;
 }
