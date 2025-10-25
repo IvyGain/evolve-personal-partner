@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../database/database.js';
-import type { DashboardData, ApiResponse } from '../../shared/types.js';
+import type { DashboardData, ApiResponse, BehaviorChangeStage } from '../../shared/types.js';
 
 const router = express.Router();
 
@@ -272,8 +272,8 @@ function analyzeBehaviorChangeStage(userId: string) {
 
   if (recentActions.length === 0) {
     return {
-      stage: 'precontemplation' as const,
-      current_stage: 'precontemplation',
+      stage: 'precontemplation' as BehaviorChangeStage,
+      current_stage: 'precontemplation' as BehaviorChangeStage,
       stage_description: 'まだ行動変容の準備段階です',
       next_stage_tips: ['小さな目標から始めてみましょう', '変化の必要性を認識することから始めます'],
       confidence_level: 3,
@@ -288,7 +288,7 @@ function analyzeBehaviorChangeStage(userId: string) {
   const avgEmotionalState = recentActions.length > 0 ? totalEmotionalState / Number(recentActions.length) : 0;
   const consistentDays = new Set(recentActions.map((a: any) => a.recorded_at.split('T')[0])).size;
 
-  let stage: 'precontemplation' | 'contemplation' | 'preparation' | 'action' | 'maintenance';
+  let stage: BehaviorChangeStage;
   let description: string;
   let tips: string[];
 

@@ -7,6 +7,18 @@ declare global {
   }
 }
 
+interface SpeechGrammarList {
+  length: number;
+  item(index: number): SpeechGrammar;
+  addFromURI(src: string, weight?: number): void;
+  addFromString(string: string, weight?: number): void;
+}
+
+interface SpeechGrammar {
+  src: string;
+  weight: number;
+}
+
 interface SpeechRecognitionEvent {
   results: SpeechRecognitionResultList;
   resultIndex: number;

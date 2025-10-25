@@ -276,7 +276,7 @@ async function generateCoachingResponse(userInput: string, user: any, context: a
     console.log('📊 Conversation analysis:', conversationAnalysis);
     
     // ユーザーの目標を取得
-    const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') || [];
+    const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') as any[] || [];
     
     // 行動変容ステージを判定（AI使用）
     const behaviorStage = await aiService.assessBehaviorChangeStage(userInput, context);
@@ -286,6 +286,7 @@ async function generateCoachingResponse(userInput: string, user: any, context: a
       sessionHistory,
       userProfile: user,
       behaviorStage,
+      userGoals: userGoals,
       currentGoals: userGoals,
       conversationAnalysis
     };

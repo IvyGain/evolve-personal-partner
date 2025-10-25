@@ -70,7 +70,7 @@ io.on('connection', (socket) => {
       const { sessionId, userInput, userId = 'demo-user-001' } = data;
       
       // ユーザー情報を取得
-      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
       if (!user) {
         socket.emit('ai_coaching_error', { error: 'User not found' });
         return;
@@ -81,10 +81,10 @@ io.on('connection', (socket) => {
         SELECT * FROM session_messages 
         WHERE session_id = ? 
         ORDER BY created_at ASC
-      `).all(sessionId);
+      `).all(sessionId) as any[];
       
       // ユーザーの目標を取得
-      const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') || [];
+      const userGoals = db.prepare('SELECT * FROM goals WHERE user_id = ? AND status = ?').all(user.id, 'active') as any[] || [];
       
       // BytePlus AIサービスを使用
       const aiService = BytePlusAIService.getInstance();
@@ -97,6 +97,7 @@ io.on('connection', (socket) => {
         sessionHistory,
         userProfile: user,
         behaviorStage,
+        userGoals: userGoals,
         currentGoals: userGoals
       };
       

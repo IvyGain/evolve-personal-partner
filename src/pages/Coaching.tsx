@@ -16,14 +16,7 @@ import {
 } from 'lucide-react';
 import { VoiceInput } from '../components/VoiceInput';
 import type { CoachingSession, SessionMessage } from '../../shared/types';
-
-// Web Speech API型定義
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
+import '../types/speech';
 
 export default function Coaching() {
   const [currentSession, setCurrentSession] = useState<CoachingSession | null>(null);

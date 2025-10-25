@@ -34,12 +34,12 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   const [error, setError] = useState<SpeechRecognitionError | null>(null);
   const [browserSupportMessage, setBrowserSupportMessage] = useState('');
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const isInitializedRef = useRef(false);
 
   // ブラウザサポートの詳細チェック
   const checkBrowserSupport = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
       setIsSupported(false);
@@ -66,7 +66,7 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
       return;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
     // 設定
@@ -82,7 +82,7 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
       setError(null);
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       let interimTranscript = '';
       let finalTranscript = '';
 
@@ -106,7 +106,7 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
       }
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: any) => {
       console.error('❌ 音声認識エラー:', event.error);
       setIsListening(false);
       
