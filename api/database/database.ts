@@ -5,8 +5,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// データベースファイルのパス
-const dbPath = path.join(__dirname, '../../data/evolve.db');
+// データベースファイルのパス（本番環境ではメモリ内データベースを使用）
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const dbPath = isProduction ? ':memory:' : path.join(__dirname, '../../data/evolve.db');
 
 // データベース接続
 export const db = new Database(dbPath);
@@ -186,8 +187,8 @@ export function initializeDatabase() {
 function insertSampleData() {
   console.log('Inserting sample data...');
 
-  // サンプルユーザーが存在するかチェック
-  const existingUser = db.prepare('SELECT id FROM users WHERE id = ?').get('demo-user-001');
+  // 本番環境では常にサンプルデータを挿入、開発環境では存在チェック
+  const existingUser = isProduction ? null : db.prepare('SELECT id FROM users WHERE id = ?').get('demo-user-001');
   
   if (!existingUser) {
     // サンプルユーザー

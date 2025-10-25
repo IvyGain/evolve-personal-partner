@@ -37,7 +37,7 @@ export default function Coaching() {
   const startNewSession = async () => {
     setSessionLoading(true);
     try {
-      const response = await fetch('/api/coaching/start', {
+      const response = await fetch('/api/coaching/session/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ export default function Coaching() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/coaching/continue', {
+      const response = await fetch(`/api/coaching/session/${currentSession.id}/continue`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
